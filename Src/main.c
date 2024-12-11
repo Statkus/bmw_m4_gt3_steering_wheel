@@ -81,7 +81,7 @@ static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 void Pin_To_Bit(uint8_t* bitfield, uint8_t bit_index, GPIO_PinState pin_state);
-int _write(int fd, char* ptr, int len);
+uint8_t Compute_Checksum(const uint8_t* buffer, uint8_t length);
 
 /* USER CODE END PFP */
 
@@ -146,16 +146,61 @@ int main(void)
 
   HAL_TIM_Base_Start_IT(&htim1);
 
+  uint8_t UART_buffer[7] = {0};
+  UART_buffer[0] = 0xA5;
+
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    //if (HAL_UART_Receive(&huart1, (uint8_t *)&received_data, 1, HAL_MAX_DELAY) == HAL_OK)
-    //{
-    //  printf("Received: %c\n", received_data);
-    //}
+    // Map inputs to UART buffer
+    Pin_To_Bit(&UART_buffer[1], 0, pins_debounced[0]);  // Right shifter paddle
+    Pin_To_Bit(&UART_buffer[1], 1, pins_debounced[1]);  // Left shifter paddle
+    Pin_To_Bit(&UART_buffer[1], 2, pins_debounced[2]);  // Right back button
+    Pin_To_Bit(&UART_buffer[1], 3, pins_debounced[3]);  // Left back button
+    Pin_To_Bit(&UART_buffer[1], 4, pins_debounced[4]);  // D-pad up
+    Pin_To_Bit(&UART_buffer[1], 5, pins_debounced[5]);  // D-pad down
+    Pin_To_Bit(&UART_buffer[1], 6, pins_debounced[6]);  // D-pad right
+    Pin_To_Bit(&UART_buffer[1], 7, pins_debounced[7]);  // D-pad left
+    if (pins_debounced[4] == GPIO_PIN_SET &&
+        pins_debounced[5] == GPIO_PIN_SET &&
+        pins_debounced[6] == GPIO_PIN_SET &&
+        pins_debounced[7] == GPIO_PIN_SET)
+      Pin_To_Bit(&UART_buffer[2], 0, pins_debounced[8]); // D-pad button
+    else
+      Pin_To_Bit(&UART_buffer[2], 0, GPIO_PIN_SET); // D-pad button
+    Pin_To_Bit(&UART_buffer[2], 1, pins_debounced[21]); // Right 1
+    Pin_To_Bit(&UART_buffer[2], 2, pins_debounced[22]); // Right 2
+    Pin_To_Bit(&UART_buffer[2], 3, pins_debounced[23]); // Right 3
+    Pin_To_Bit(&UART_buffer[2], 4, pins_debounced[24]); // Right 4
+    Pin_To_Bit(&UART_buffer[2], 5, pins_debounced[25]); // Right 5
+    Pin_To_Bit(&UART_buffer[2], 6, pins_debounced[26]); // Right 6
+    Pin_To_Bit(&UART_buffer[2], 7, pins_debounced[27]); // Left 1
+    Pin_To_Bit(&UART_buffer[3], 0, pins_debounced[28]); // Left 2
+    Pin_To_Bit(&UART_buffer[3], 1, pins_debounced[29]); // Left 3
+    Pin_To_Bit(&UART_buffer[3], 2, pins_debounced[30]); // Left 4
+    Pin_To_Bit(&UART_buffer[3], 3, pins_debounced[31]); // Left 5
+    Pin_To_Bit(&UART_buffer[3], 4, pins_debounced[32]); // Left 6
+    Pin_To_Bit(&UART_buffer[3], 5, (encoders[0].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[3], 6, (encoders[0].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[3], 7, (encoders[1].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[4], 0, (encoders[1].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[4], 1, (encoders[2].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[4], 2, (encoders[2].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[4], 3, (encoders[3].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[4], 4, (encoders[3].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[4], 5, (encoders[4].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[4], 6, (encoders[4].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[4], 7, (encoders[5].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[5], 0, (encoders[5].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+
+    UART_buffer[6] = Compute_Checksum(UART_buffer, sizeof(UART_buffer) - 1);
+
+    HAL_UART_Transmit(&huart1, UART_buffer, sizeof(UART_buffer), HAL_MAX_DELAY);
+
+    HAL_Delay (2);
 
     /* USER CODE END WHILE */
 
@@ -481,57 +526,6 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 
 void SPI1_CS_High_IRQ_Handler(void)
 {
-  // Map inputs to Fanatec buttons
-  Pin_To_Bit(&fanatec_data_out.buttons[1], 0, pins_debounced[0]);  // Right shifter paddle
-  Pin_To_Bit(&fanatec_data_out.buttons[1], 3, pins_debounced[1]);  // Left shifter paddle
-  Pin_To_Bit(&fanatec_data_out.btnHub[0],  5, pins_debounced[2]);  // Right back button
-  Pin_To_Bit(&fanatec_data_out.btnHub[0],  4, pins_debounced[3]);  // Left back button
-  Pin_To_Bit(&fanatec_data_out.buttons[0], 0, pins_debounced[4]);  // D-pad up
-  Pin_To_Bit(&fanatec_data_out.buttons[0], 3, pins_debounced[5]);  // D-pad down
-  Pin_To_Bit(&fanatec_data_out.buttons[0], 2, pins_debounced[6]);  // D-pad right
-  Pin_To_Bit(&fanatec_data_out.buttons[0], 1, pins_debounced[7]);  // D-pad left
-  if (pins_debounced[4] == GPIO_PIN_SET &&
-      pins_debounced[5] == GPIO_PIN_SET &&
-      pins_debounced[6] == GPIO_PIN_SET &&
-      pins_debounced[7] == GPIO_PIN_SET)
-    Pin_To_Bit(&fanatec_data_out.buttons[2], 1, pins_debounced[8]); // D-pad button
-  else
-    Pin_To_Bit(&fanatec_data_out.buttons[2], 1, GPIO_PIN_SET); // D-pad button
-  Pin_To_Bit(&fanatec_data_out.buttons[0], 6, pins_debounced[21]); // Right 1
-  Pin_To_Bit(&fanatec_data_out.buttons[0], 7, pins_debounced[22]); // Right 2
-  Pin_To_Bit(&fanatec_data_out.buttons[0], 5, pins_debounced[23]); // Right 3
-  Pin_To_Bit(&fanatec_data_out.buttons[2], 2, pins_debounced[24]); // Right 4
-  Pin_To_Bit(&fanatec_data_out.buttons[0], 4, pins_debounced[25]); // Right 5
-  Pin_To_Bit(&fanatec_data_out.buttons[1], 2, pins_debounced[26]); // Right 6
-  Pin_To_Bit(&fanatec_data_out.buttons[1], 4, pins_debounced[27]); // Left 1
-  Pin_To_Bit(&fanatec_data_out.buttons[1], 5, pins_debounced[28]); // Left 2
-  Pin_To_Bit(&fanatec_data_out.buttons[1], 1, pins_debounced[29]); // Left 3
-  Pin_To_Bit(&fanatec_data_out.buttons[1], 7, pins_debounced[30]); // Left 4
-  Pin_To_Bit(&fanatec_data_out.buttons[2], 3, pins_debounced[31]); // Left 5
-  Pin_To_Bit(&fanatec_data_out.buttons[1], 6, pins_debounced[32]); // Left 6
-  Pin_To_Bit(&fanatec_data_out.buttons[2], 5, (encoders[1].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-  Pin_To_Bit(&fanatec_data_out.btnHub[0], 3, (encoders[1].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-  //Pin_To_Bit(&fanatec_data_out.buttons[2], 0, (encoders[2].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-  //Pin_To_Bit(&fanatec_data_out.buttons[2], 4, (encoders[2].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-
-  //printf("%d, %d, %d, %d, %d\n",
-  // fanatec_data_out.buttons[0],
-  // fanatec_data_out.buttons[1],
-  // fanatec_data_out.buttons[2],
-  // fanatec_data_out.btnHub[0],
-  // fanatec_data_out.btnHub[1]
-  // );
-
-  // Map D-pad encoder to Fanatec encoder
-  if (encoders[0].state == Clockwise)
-    fanatec_data_out.encoder = 1;
-  else if (encoders[0].state == Counterclockwise)
-    fanatec_data_out.encoder = -1;
-  else
-    fanatec_data_out.encoder = 0;
-
-  fanatec_data_out.crc = Compute_CRC(fanatec_data_out.raw, sizeof(fanatec_data_out.raw) - 1);
-
   HAL_SPI_Transmit_DMA(&hspi1, fanatec_data_out.raw, sizeof(fanatec_data_out.raw));
 }
 
@@ -714,10 +708,16 @@ void Pin_To_Bit(uint8_t* bitfield, uint8_t bit_index, GPIO_PinState pin_state)
   }
 }
 
-int _write(int fd, char* ptr, int len)
+uint8_t Compute_Checksum(const uint8_t* buffer, uint8_t length)
 {
-    HAL_UART_Transmit(&huart1, (uint8_t *)ptr, len, HAL_MAX_DELAY);
-    return len;
+  uint8_t checksum = 0;
+
+  for (int i = 0; i < length; i++)
+  {
+    checksum ^= buffer[i];
+  }
+
+  return checksum;
 }
 
 /* USER CODE END 4 */
@@ -731,8 +731,6 @@ void Error_Handler(void)
   /* USER CODE BEGIN Error_Handler_Debug */
   /* User can add his own implementation to report the HAL error return state */
   __disable_irq();
-
-  printf("Error_Handler\n");
 
   while (1)
   {
