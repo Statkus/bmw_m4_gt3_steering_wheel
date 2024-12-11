@@ -113,6 +113,32 @@ void SPI1_CS_High_IRQ_Handler(void);
 
 /* USER CODE BEGIN Private defines */
 
+#define NUMBER_OF_BUTTONS     9
+#define NUMBER_OF_ENCODERS    6
+#define NUMBER_OF_ADC_BUTTONS 12
+
+#define NUMBER_OF_DIGITAL_INPUTS NUMBER_OF_BUTTONS + (NUMBER_OF_ENCODERS * 2)
+#define NUMBER_OF_VIRTUAL_INPUTS NUMBER_OF_ADC_BUTTONS + NUMBER_OF_DIGITAL_INPUTS
+
+#define DEBOUNCE_CYCLES 10
+
+enum encoder_state_t
+{
+  Idle = 0,
+  Clockwise,
+  Counterclockwise
+};
+
+struct encoder_t
+{
+  enum encoder_state_t state;
+  GPIO_PinState A;
+  GPIO_PinState B;
+  GPIO_PinState previous_A;
+  GPIO_PinState previous_B;
+};
+
+
 /* USER CODE END Private defines */
 
 #ifdef __cplusplus

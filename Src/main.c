@@ -57,6 +57,13 @@ UART_HandleTypeDef huart1;
 
 /* USER CODE BEGIN PV */
 
+GPIO_PinState pins_debounced[NUMBER_OF_VIRTUAL_INPUTS] = {0};
+
+struct encoder_t encoders[NUMBER_OF_ENCODERS];
+
+uint32_t ADC_DMA_buffer[2] = {0};
+uint8_t new_ADC_data = 0;
+
 struct fanatec_data_out_t fanatec_data_out;
 
 char received_data;
@@ -73,6 +80,7 @@ static void MX_ADC1_Init(void);
 static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
+void Pin_To_Bit(uint8_t* bitfield, uint8_t bit_index, GPIO_PinState pin_state);
 int _write(int fd, char* ptr, int len);
 
 /* USER CODE END PFP */
@@ -90,6 +98,22 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
+
+  for (int i = 0; i < NUMBER_OF_ENCODERS; i++)
+  {
+    encoders[i].state      = Idle;
+    encoders[i].A          = GPIO_PIN_SET;
+    encoders[i].B          = GPIO_PIN_SET;
+    encoders[i].previous_A = GPIO_PIN_SET;
+    encoders[i].previous_B = GPIO_PIN_SET;
+  }
+
+  memset(fanatec_data_out.raw, 0, sizeof (fanatec_data_out.raw));
+
+  fanatec_data_out.header = 0xA5;
+  fanatec_data_out.id     = 0x04; // ID for universal HUB
+  fanatec_data_out.fwvers = 0x13; // firmware version for universal HUB
+  fanatec_data_out.crc    = Compute_CRC(fanatec_data_out.raw, sizeof(fanatec_data_out.raw) - 1);
 
   /* USER CODE END 1 */
 
@@ -118,14 +142,9 @@ int main(void)
   MX_TIM1_Init();
   /* USER CODE BEGIN 2 */
 
-  memset(fanatec_data_out.raw, 0, sizeof (fanatec_data_out.raw));
+  HAL_ADC_Start_DMA(&hadc1, ADC_DMA_buffer, 2);
 
-  fanatec_data_out.header = 0xA5;
-  fanatec_data_out.id     = 0x04; // ID for universal HUB
-  fanatec_data_out.fwvers = 0x13; // firmware version for universal HUB
-  fanatec_data_out.crc    = Compute_CRC(fanatec_data_out.raw, sizeof(fanatec_data_out.raw) - 1);
-
-  printf("Start main loop\n");
+  HAL_TIM_Base_Start_IT(&htim1);
 
   /* USER CODE END 2 */
 
@@ -133,12 +152,10 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    if (HAL_UART_Receive(&huart1, (uint8_t *)&received_data, 1, HAL_MAX_DELAY) == HAL_OK)
-    {
-      printf("Received: %c\n", received_data);
-    }
-
-    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+    //if (HAL_UART_Receive(&huart1, (uint8_t *)&received_data, 1, HAL_MAX_DELAY) == HAL_OK)
+    //{
+    //  printf("Received: %c\n", received_data);
+    //}
 
     /* USER CODE END WHILE */
 
@@ -457,268 +474,243 @@ static void MX_GPIO_Init(void)
 
 /* USER CODE BEGIN 4 */
 
+void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
+{
+    new_ADC_data = 1;
+}
+
 void SPI1_CS_High_IRQ_Handler(void)
 {
-  switch (received_data)
-  {
-    case 'a':
-      fanatec_data_out.buttons[0] = 0x01;
-      break;
+  // Map inputs to Fanatec buttons
+  Pin_To_Bit(&fanatec_data_out.buttons[1], 0, pins_debounced[0]);  // Right shifter paddle
+  Pin_To_Bit(&fanatec_data_out.buttons[1], 3, pins_debounced[1]);  // Left shifter paddle
+  Pin_To_Bit(&fanatec_data_out.btnHub[0],  5, pins_debounced[2]);  // Right back button
+  Pin_To_Bit(&fanatec_data_out.btnHub[0],  4, pins_debounced[3]);  // Left back button
+  Pin_To_Bit(&fanatec_data_out.buttons[0], 0, pins_debounced[4]);  // D-pad up
+  Pin_To_Bit(&fanatec_data_out.buttons[0], 3, pins_debounced[5]);  // D-pad down
+  Pin_To_Bit(&fanatec_data_out.buttons[0], 2, pins_debounced[6]);  // D-pad right
+  Pin_To_Bit(&fanatec_data_out.buttons[0], 1, pins_debounced[7]);  // D-pad left
+  if (pins_debounced[4] == GPIO_PIN_SET &&
+      pins_debounced[5] == GPIO_PIN_SET &&
+      pins_debounced[6] == GPIO_PIN_SET &&
+      pins_debounced[7] == GPIO_PIN_SET)
+    Pin_To_Bit(&fanatec_data_out.buttons[2], 1, pins_debounced[8]); // D-pad button
+  else
+    Pin_To_Bit(&fanatec_data_out.buttons[2], 1, GPIO_PIN_SET); // D-pad button
+  Pin_To_Bit(&fanatec_data_out.buttons[0], 6, pins_debounced[21]); // Right 1
+  Pin_To_Bit(&fanatec_data_out.buttons[0], 7, pins_debounced[22]); // Right 2
+  Pin_To_Bit(&fanatec_data_out.buttons[0], 5, pins_debounced[23]); // Right 3
+  Pin_To_Bit(&fanatec_data_out.buttons[2], 2, pins_debounced[24]); // Right 4
+  Pin_To_Bit(&fanatec_data_out.buttons[0], 4, pins_debounced[25]); // Right 5
+  Pin_To_Bit(&fanatec_data_out.buttons[1], 2, pins_debounced[26]); // Right 6
+  Pin_To_Bit(&fanatec_data_out.buttons[1], 4, pins_debounced[27]); // Left 1
+  Pin_To_Bit(&fanatec_data_out.buttons[1], 5, pins_debounced[28]); // Left 2
+  Pin_To_Bit(&fanatec_data_out.buttons[1], 1, pins_debounced[29]); // Left 3
+  Pin_To_Bit(&fanatec_data_out.buttons[1], 7, pins_debounced[30]); // Left 4
+  Pin_To_Bit(&fanatec_data_out.buttons[2], 3, pins_debounced[31]); // Left 5
+  Pin_To_Bit(&fanatec_data_out.buttons[1], 6, pins_debounced[32]); // Left 6
+  Pin_To_Bit(&fanatec_data_out.buttons[2], 5, (encoders[1].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+  Pin_To_Bit(&fanatec_data_out.btnHub[0], 3, (encoders[1].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+  //Pin_To_Bit(&fanatec_data_out.buttons[2], 0, (encoders[2].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+  //Pin_To_Bit(&fanatec_data_out.buttons[2], 4, (encoders[2].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
 
-    case 'b':
-      fanatec_data_out.buttons[0] = 0x02;
-      break;
+  //printf("%d, %d, %d, %d, %d\n",
+  // fanatec_data_out.buttons[0],
+  // fanatec_data_out.buttons[1],
+  // fanatec_data_out.buttons[2],
+  // fanatec_data_out.btnHub[0],
+  // fanatec_data_out.btnHub[1]
+  // );
 
-    case 'c':
-      fanatec_data_out.buttons[0] = 0x04;
-      break;
-
-    case 'd':
-      fanatec_data_out.buttons[0] = 0x08;
-      break;
-
-    case 'e':
-      fanatec_data_out.buttons[0] = 0x10;
-      break;
-
-    case 'f':
-      fanatec_data_out.buttons[0] = 0x20;
-      break;
-
-    case 'g':
-      fanatec_data_out.buttons[0] = 0x40;
-      break;
-
-    case 'h':
-      fanatec_data_out.buttons[0] = 0x80;
-      break;
-
-    case 'i':
-      fanatec_data_out.buttons[1] = 0x01;
-      break;
-
-    case 'j':
-      fanatec_data_out.buttons[1] = 0x02;
-      break;
-
-    case 'k':
-      fanatec_data_out.buttons[1] = 0x04;
-      break;
-
-    case 'l':
-      fanatec_data_out.buttons[1] = 0x08;
-      break;
-
-    case 'm':
-      fanatec_data_out.buttons[1] = 0x10;
-      break;
-
-    case 'n':
-      fanatec_data_out.buttons[1] = 0x20;
-      break;
-
-    case 'o':
-      fanatec_data_out.buttons[1] = 0x40;
-      break;
-
-    case 'p':
-      fanatec_data_out.buttons[1] = 0x80;
-      break;
-
-    case 'q':
-      fanatec_data_out.buttons[2] = 0x01;
-      break;
-
-    case 'r':
-      fanatec_data_out.buttons[2] = 0x02;
-      break;
-
-    case 's':
-      fanatec_data_out.buttons[2] = 0x04;
-      break;
-
-    case 't':
-      fanatec_data_out.buttons[2] = 0x08;
-      break;
-
-    case 'u':
-      fanatec_data_out.buttons[2] = 0x10;
-      break;
-
-    case 'v':
-      fanatec_data_out.buttons[2] = 0x20;
-      break;
-
-    case 'w':
-      fanatec_data_out.buttons[2] = 0x40;
-      break;
-
-    case 'x':
-      fanatec_data_out.buttons[2] = 0x80;
-      break;
-
-    case 'y':
-      fanatec_data_out.encoder = 1;
-      break;
-
-    case 'z':
-      fanatec_data_out.encoder = -1;
-      break;
-
-    case 'A':
-      fanatec_data_out.btnHub[0] = 0x01;
-      break;
-
-    case 'B':
-      fanatec_data_out.btnHub[0] = 0x02;
-      break;
-
-    case 'C':
-      fanatec_data_out.btnHub[0] = 0x04;
-      break;
-
-    case 'D':
-      fanatec_data_out.btnHub[0] = 0x08;
-      break;
-
-    case 'E':
-      fanatec_data_out.btnHub[0] = 0x10;
-      break;
-
-    case 'F':
-      fanatec_data_out.btnHub[0] = 0x20;
-      break;
-
-    case 'G':
-      fanatec_data_out.btnHub[0] = 0x40;
-      break;
-
-    case 'H':
-      fanatec_data_out.btnHub[0] = 0x80;
-      break;
-
-    case 'I':
-      fanatec_data_out.btnHub[1] = 0x01;
-      break;
-
-    case 'J':
-      fanatec_data_out.btnHub[1] = 0x02;
-      break;
-
-    case 'K':
-      fanatec_data_out.btnHub[1] = 0x04;
-      break;
-
-    case 'L':
-      fanatec_data_out.btnHub[1] = 0x08;
-      break;
-
-    case 'M':
-      fanatec_data_out.btnHub[1] = 0x10;
-      break;
-
-    case 'N':
-      fanatec_data_out.btnHub[1] = 0x20;
-      break;
-
-    case 'O':
-      fanatec_data_out.btnHub[1] = 0x40;
-      break;
-
-    case 'P':
-      fanatec_data_out.btnHub[1] = 0x80;
-      break;
-
-    case 'Q':
-      fanatec_data_out.btnPS[0] = 0x01;
-      break;
-
-    case 'R':
-      fanatec_data_out.btnPS[0] = 0x02;
-      break;
-
-    case 'S':
-      fanatec_data_out.btnPS[0] = 0x04;
-      break;
-
-    case 'T':
-      fanatec_data_out.btnPS[0] = 0x08;
-      break;
-
-    case 'U':
-      fanatec_data_out.btnPS[0] = 0x10;
-      break;
-
-    case 'V':
-      fanatec_data_out.btnPS[0] = 0x20;
-      break;
-
-    case 'W':
-      fanatec_data_out.btnPS[0] = 0x40;
-      break;
-
-    case 'X':
-      fanatec_data_out.btnPS[0] = 0x80;
-      break;
-
-    case 'Y':
-      fanatec_data_out.btnPS[1] = 0x01;
-      break;
-
-    case 'Z':
-      fanatec_data_out.btnPS[1] = 0x02;
-      break;
-
-    case '0':
-      fanatec_data_out.btnPS[1] = 0x04;
-      break;
-
-    case '1':
-      fanatec_data_out.btnPS[1] = 0x08;
-      break;
-
-    case '2':
-      fanatec_data_out.btnPS[1] = 0x10;
-      break;
-
-    case '3':
-      fanatec_data_out.btnPS[1] = 0x20;
-      break;
-
-    case '4':
-      fanatec_data_out.btnPS[1] = 0x40;
-      break;
-
-    case '5':
-      fanatec_data_out.btnPS[1] = 0x80;
-      break;
-
-    case '6':
-      fanatec_data_out.axisX = 127;
-      break;
-
-    case '7':
-      fanatec_data_out.axisY = 127;
-      break;
-
-    default:
-      fanatec_data_out.buttons[0] = 0;
-      fanatec_data_out.buttons[1] = 0;
-      fanatec_data_out.buttons[2] = 0;
-      fanatec_data_out.encoder = 0;
-      fanatec_data_out.btnHub[0] = 0;
-      fanatec_data_out.btnHub[1] = 0;
-      fanatec_data_out.btnPS[0] = 0;
-      fanatec_data_out.btnPS[1] = 0;
-      fanatec_data_out.axisX = -128;
-      fanatec_data_out.axisY = -128;
-  }
+  // Map D-pad encoder to Fanatec encoder
+  if (encoders[0].state == Clockwise)
+    fanatec_data_out.encoder = 1;
+  else if (encoders[0].state == Counterclockwise)
+    fanatec_data_out.encoder = -1;
+  else
+    fanatec_data_out.encoder = 0;
 
   fanatec_data_out.crc = Compute_CRC(fanatec_data_out.raw, sizeof(fanatec_data_out.raw) - 1);
 
-  if (HAL_SPI_Transmit_DMA(&hspi1, fanatec_data_out.raw, sizeof(fanatec_data_out.raw)) != HAL_OK)
+  HAL_SPI_Transmit_DMA(&hspi1, fanatec_data_out.raw, sizeof(fanatec_data_out.raw));
+}
+
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
+{
+  static GPIO_TypeDef* const GPIO_port[NUMBER_OF_DIGITAL_INPUTS] =
+   {SHIFTER_PADDLE_RIGHT_GPIO_Port,
+    SHIFTER_PADDLE_LEFT_GPIO_Port,
+    BACK_BUTTON_RIGHT_GPIO_Port,
+    BACK_BUTTON_LEFT_GPIO_Port,
+    DPAD_UP_GPIO_Port,
+    DPAD_DOWN_GPIO_Port,
+    DPAD_RIGHT_GPIO_Port,
+    DPAD_LEFT_GPIO_Port,
+    DPAD_BUTTON_GPIO_Port,
+    DPAD_ENCODER_A_GPIO_Port,
+    DPAD_ENCODER_B_GPIO_Port,
+    ENCODER_1_A_GPIO_Port,
+    ENCODER_1_B_GPIO_Port,
+    ENCODER_2_A_GPIO_Port,
+    ENCODER_2_B_GPIO_Port,
+    ENCODER_3_A_GPIO_Port,
+    ENCODER_3_B_GPIO_Port,
+    ENCODER_4_A_GPIO_Port,
+    ENCODER_4_B_GPIO_Port,
+    ENCODER_5_A_GPIO_Port,
+    ENCODER_5_B_GPIO_Port};
+
+  static const uint16_t GPIO_pin[NUMBER_OF_DIGITAL_INPUTS] =
+   {SHIFTER_PADDLE_RIGHT_Pin,
+    SHIFTER_PADDLE_LEFT_Pin,
+    BACK_BUTTON_RIGHT_Pin,
+    BACK_BUTTON_LEFT_Pin,
+    DPAD_UP_Pin,
+    DPAD_DOWN_Pin,
+    DPAD_RIGHT_Pin,
+    DPAD_LEFT_Pin,
+    DPAD_BUTTON_Pin,
+    DPAD_ENCODER_A_Pin,
+    DPAD_ENCODER_B_Pin,
+    ENCODER_1_A_Pin,
+    ENCODER_1_B_Pin,
+    ENCODER_2_A_Pin,
+    ENCODER_2_B_Pin,
+    ENCODER_3_A_Pin,
+    ENCODER_3_B_Pin,
+    ENCODER_4_A_Pin,
+    ENCODER_4_B_Pin,
+    ENCODER_5_A_Pin,
+    ENCODER_5_B_Pin};
+
+  static GPIO_PinState pins_state[NUMBER_OF_VIRTUAL_INPUTS] = {0};
+  static GPIO_PinState previous_pins_state[NUMBER_OF_VIRTUAL_INPUTS] = {0};
+
+  static uint8_t nb_cycles_stable[NUMBER_OF_VIRTUAL_INPUTS] = {0};
+
+  // Read digital inputs
+  for (int i = 0; i < NUMBER_OF_DIGITAL_INPUTS; i++)
   {
-    Error_Handler();
+    pins_state[i] = HAL_GPIO_ReadPin(GPIO_port[i], GPIO_pin[i]);
+  }
+
+  // Compute buttons connected to ADC state
+  if (new_ADC_data == 1)
+  {
+    new_ADC_data = 0;
+
+    // Reset all pins first (active low)
+    for (int i = 0; i < NUMBER_OF_ADC_BUTTONS; i++)
+    {
+      pins_state[NUMBER_OF_DIGITAL_INPUTS + i] = GPIO_PIN_SET;
+    }
+
+    for (int i = 0; i < 2; i++)
+    {
+      if (ADC_DMA_buffer[i] < 21)
+        pins_state[NUMBER_OF_DIGITAL_INPUTS + (i * 6)] = GPIO_PIN_RESET;
+      else if (ADC_DMA_buffer[i] < 64)
+        pins_state[NUMBER_OF_DIGITAL_INPUTS + (i * 6) + 1] = GPIO_PIN_RESET;
+      else if (ADC_DMA_buffer[i] < 106)
+        pins_state[NUMBER_OF_DIGITAL_INPUTS + (i * 6) + 2] = GPIO_PIN_RESET;
+      else if (ADC_DMA_buffer[i] < 149)
+        pins_state[NUMBER_OF_DIGITAL_INPUTS + (i * 6) + 3] = GPIO_PIN_RESET;
+      else if (ADC_DMA_buffer[i] < 191)
+        pins_state[NUMBER_OF_DIGITAL_INPUTS + (i * 6) + 4] = GPIO_PIN_RESET;
+      else if (ADC_DMA_buffer[i] < 234)
+        pins_state[NUMBER_OF_DIGITAL_INPUTS + (i * 6) + 5] = GPIO_PIN_RESET;
+    }
+
+    HAL_ADC_Start_DMA(&hadc1, ADC_DMA_buffer, 2);
+  }
+
+  // Debounce inputs
+  for (int i = 0; i < NUMBER_OF_VIRTUAL_INPUTS; i++)
+  {
+    if (previous_pins_state[i] == pins_state[i])
+    {
+      nb_cycles_stable[i]++;
+    }
+    else
+    {
+      previous_pins_state[i] = pins_state[i];
+      nb_cycles_stable[i]    = 0;
+    }
+
+    if (nb_cycles_stable[i] >= DEBOUNCE_CYCLES)
+    {
+      pins_debounced[i] = pins_state[i];
+    }
+  }
+
+  // Compute encoders state
+  for (int i = 0; i < NUMBER_OF_ENCODERS; i++)
+  {
+    uint8_t A_index = NUMBER_OF_BUTTONS + (i * 2);
+    uint8_t B_index = NUMBER_OF_BUTTONS + (i * 2) + 1;
+
+    encoders[i].A = pins_debounced[A_index];
+    encoders[i].B = pins_debounced[B_index];
+
+    switch (encoders[i].state)
+    {
+      case Idle:
+        if (encoders[i].A == GPIO_PIN_RESET
+            && encoders[i].A != encoders[i].previous_A
+            && encoders[i].B == GPIO_PIN_SET)
+        {
+          encoders[i].state = Clockwise;
+        }
+        else if (encoders[i].B == GPIO_PIN_RESET
+            && encoders[i].B != encoders[i].previous_B
+            && encoders[i].A == GPIO_PIN_SET)
+        {
+          encoders[i].state = Counterclockwise;
+        }
+        break;
+
+      case Clockwise:
+          if (encoders[i].A == GPIO_PIN_SET)
+          {
+            encoders[i].state = Idle;
+          }
+        break;
+
+      case Counterclockwise:
+          if (encoders[i].B == GPIO_PIN_SET)
+          {
+            encoders[i].state = Idle;
+          }
+        break;
+    }
+
+    encoders[i].previous_A = encoders[i].A;
+    encoders[i].previous_B = encoders[i].B;
+  }
+
+  // Heartbeat LED at 1Hz
+  static uint16_t LED_counter = 0;
+
+  if (LED_counter > 500)
+  {
+    HAL_GPIO_TogglePin(LED_GPIO_Port, LED_Pin);
+    LED_counter = 0;
+  }
+  else
+  {
+    LED_counter++;
+  }
+}
+
+void Pin_To_Bit(uint8_t* bitfield, uint8_t bit_index, GPIO_PinState pin_state)
+{
+  if (pin_state == GPIO_PIN_SET)
+  {
+    *bitfield &= ~(1 << bit_index);
+  }
+  else
+  {
+    *bitfield |= (1 << bit_index);
   }
 }
 

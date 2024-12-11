@@ -37,7 +37,7 @@ struct fanatec_data_out_t {
  * buttons[0] 8: button 2 on right top group and triangle button on plate
  * buttons[1] 1: right shifter paddle and R1 button on plate
  * buttons[1] 2: button 3 on left top group and R2 button on plate
- * buttons[1] 3: button 3 on right down group and R3 button on plate
+ * buttons[1] 3: button 3 on right bottom group and R3 button on plate
  * buttons[1] 4: left shifter paddle and L1 button on plate
  * buttons[1] 5: button 1 on left top group and L2 button on plate
  * buttons[1] 6: button 2 on left top group and L3 button on plate
@@ -73,7 +73,7 @@ struct fanatec_data_out_t {
  * btnPS[0] 3: button 1 on left top group and L2 button on plate
  * btnPS[0] 4: button 3 on left top group and R2 button on plate
  * btnPS[0] 5: button 2 on left top group and L3 button on plate
- * btnPS[0] 6: button 3 on right down group and R3 button on plate
+ * btnPS[0] 6: button 3 on right bottom group and R3 button on plate
  * btnPS[0] 7: select button on plate
  * btnPS[0] 8: button 3 on left bottom group and start button on plate
  * btnPS[1] 1: button 1 on right top group and square button on plate
