@@ -81,7 +81,6 @@ static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 void Pin_To_Bit(uint8_t* bitfield, uint8_t bit_index, GPIO_PinState pin_state);
-uint8_t Compute_Checksum(const uint8_t* buffer, uint8_t length);
 
 /* USER CODE END PFP */
 
@@ -196,7 +195,7 @@ int main(void)
     Pin_To_Bit(&UART_buffer[4], 7, (encoders[5].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
     Pin_To_Bit(&UART_buffer[5], 0, (encoders[5].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
 
-    UART_buffer[6] = Compute_Checksum(UART_buffer, sizeof(UART_buffer) - 1);
+    UART_buffer[6] = Compute_CRC(UART_buffer, sizeof(UART_buffer) - 1);
 
     HAL_UART_Transmit(&huart1, UART_buffer, sizeof(UART_buffer), HAL_MAX_DELAY);
 
@@ -706,18 +705,6 @@ void Pin_To_Bit(uint8_t* bitfield, uint8_t bit_index, GPIO_PinState pin_state)
   {
     *bitfield |= (1 << bit_index);
   }
-}
-
-uint8_t Compute_Checksum(const uint8_t* buffer, uint8_t length)
-{
-  uint8_t checksum = 0;
-
-  for (int i = 0; i < length; i++)
-  {
-    checksum ^= buffer[i];
-  }
-
-  return checksum;
 }
 
 /* USER CODE END 4 */
