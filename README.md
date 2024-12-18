@@ -26,7 +26,7 @@ This project is a rough replica of the BMW M4 GT3 wheel, entirely printed in 3D 
 - 12 x pins from deutsch connectors 0460-202-20141
 - 1 x 12 pins JST PH male connector
 - 1 x 12 pins JST PH female connector
-- 5 x EC11 encoders with 15mm plum handle with or without push buttons
+- 5 x PEC11H-4015F-S0016 encoders
 - 14 x B3F-4055 tactile switches
 - 14 x 10mm caps for B3F-4055 tactile switchs
 - 2 x DM1-01P-30-3 switches
