@@ -100,6 +100,7 @@ int main(void)
 
   for (int i = 0; i < NUMBER_OF_ENCODERS; i++)
   {
+    encoders[i].kind       = (i == 0) ? Half_Pulse_Per_Detent : Pulse_Per_Detent;
     encoders[i].state      = Idle;
     encoders[i].A          = GPIO_PIN_SET;
     encoders[i].B          = GPIO_PIN_SET;
@@ -645,35 +646,72 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef* htim)
     encoders[i].A = pins_debounced[A_index];
     encoders[i].B = pins_debounced[B_index];
 
-    switch (encoders[i].state)
+    switch (encoders[i].kind)
     {
-      case Idle:
-        if (encoders[i].A == GPIO_PIN_RESET
-            && encoders[i].A != encoders[i].previous_A
-            && encoders[i].B == GPIO_PIN_SET)
+      case Pulse_Per_Detent:
+        switch (encoders[i].state)
         {
-          encoders[i].state = Clockwise;
-        }
-        else if (encoders[i].B == GPIO_PIN_RESET
-            && encoders[i].B != encoders[i].previous_B
-            && encoders[i].A == GPIO_PIN_SET)
-        {
-          encoders[i].state = Counterclockwise;
+          case Idle:
+            if (encoders[i].A == GPIO_PIN_RESET
+                && encoders[i].A != encoders[i].previous_A
+                && encoders[i].B == GPIO_PIN_SET)
+            {
+              encoders[i].state = Clockwise;
+            }
+            else if (encoders[i].B == GPIO_PIN_RESET
+                && encoders[i].B != encoders[i].previous_B
+                && encoders[i].A == GPIO_PIN_SET)
+            {
+              encoders[i].state = Counterclockwise;
+            }
+            break;
+
+          case Clockwise:
+            if (encoders[i].A == GPIO_PIN_SET)
+            {
+              encoders[i].state = Idle;
+            }
+            break;
+
+          case Counterclockwise:
+            if (encoders[i].B == GPIO_PIN_SET)
+            {
+              encoders[i].state = Idle;
+            }
+            break;
         }
         break;
 
-      case Clockwise:
-          if (encoders[i].A == GPIO_PIN_SET)
-          {
-            encoders[i].state = Idle;
-          }
-        break;
+      case Half_Pulse_Per_Detent:
+        switch (encoders[i].state)
+        {
+          case Idle:
+            if (encoders[i].A != encoders[i].previous_A
+                && encoders[i].B == encoders[i].previous_A)
+            {
+              encoders[i].state = Clockwise;
+            }
+            else if (encoders[i].B != encoders[i].previous_B
+                && encoders[i].A == encoders[i].previous_B)
+            {
+              encoders[i].state = Counterclockwise;
+            }
+            break;
 
-      case Counterclockwise:
-          if (encoders[i].B == GPIO_PIN_SET)
-          {
-            encoders[i].state = Idle;
-          }
+          case Clockwise:
+            if (encoders[i].A == encoders[i].B)
+            {
+              encoders[i].state = Idle;
+            }
+            break;
+
+          case Counterclockwise:
+            if (encoders[i].A == encoders[i].B)
+            {
+              encoders[i].state = Idle;
+            }
+            break;
+        }
         break;
     }
 

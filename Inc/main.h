@@ -122,6 +122,12 @@ void SPI1_CS_High_IRQ_Handler(void);
 
 #define DEBOUNCE_CYCLES 10
 
+enum encoder_kind_t
+{
+  Pulse_Per_Detent = 0,
+  Half_Pulse_Per_Detent
+};
+
 enum encoder_state_t
 {
   Idle = 0,
@@ -131,6 +137,7 @@ enum encoder_state_t
 
 struct encoder_t
 {
+  enum encoder_kind_t kind;
   enum encoder_state_t state;
   GPIO_PinState A;
   GPIO_PinState B;
