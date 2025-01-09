@@ -81,6 +81,8 @@ static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 
 void Pin_To_Bit(uint8_t* bitfield, uint8_t bit_index, GPIO_PinState pin_state);
+uint16_t Compute_UART_CRC(const uint8_t* buffer, uint8_t length);
+uint16_t Accumulate_UART_CRC(uint16_t accumulation, uint8_t byte);
 
 /* USER CODE END PFP */
 
@@ -113,7 +115,7 @@ int main(void)
   fanatec_data_out.header = 0xA5;
   fanatec_data_out.id     = 0x04; // ID for universal HUB
   fanatec_data_out.fwvers = 0x13; // firmware version for universal HUB
-  fanatec_data_out.crc    = Compute_CRC(fanatec_data_out.raw, sizeof(fanatec_data_out.raw) - 1);
+  fanatec_data_out.crc    = Compute_Fanatec_CRC(fanatec_data_out.raw, sizeof(fanatec_data_out.raw) - 1);
 
   /* USER CODE END 1 */
 
@@ -146,7 +148,7 @@ int main(void)
 
   HAL_TIM_Base_Start_IT(&htim1);
 
-  uint8_t UART_buffer[7] = {0};
+  uint8_t UART_buffer[9] = {0};
   UART_buffer[0] = 0xA5;
 
   /* USER CODE END 2 */
@@ -155,48 +157,60 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    // Increment UART buffer sequence counter
+    if (UART_buffer[1] < 255)
+    {
+      UART_buffer[1]++;
+    }
+    else
+    {
+      UART_buffer[1] = 0;
+    }
+
     // Map inputs to UART buffer
-    Pin_To_Bit(&UART_buffer[1], 0, pins_debounced[0]);  // Right shifter paddle
-    Pin_To_Bit(&UART_buffer[1], 1, pins_debounced[1]);  // Left shifter paddle
-    Pin_To_Bit(&UART_buffer[1], 2, pins_debounced[2]);  // Right back button
-    Pin_To_Bit(&UART_buffer[1], 3, pins_debounced[3]);  // Left back button
-    Pin_To_Bit(&UART_buffer[1], 4, pins_debounced[4]);  // D-pad up
-    Pin_To_Bit(&UART_buffer[1], 5, pins_debounced[5]);  // D-pad down
-    Pin_To_Bit(&UART_buffer[1], 6, pins_debounced[6]);  // D-pad right
-    Pin_To_Bit(&UART_buffer[1], 7, pins_debounced[7]);  // D-pad left
+    Pin_To_Bit(&UART_buffer[2], 0, pins_debounced[0]);  // Right shifter paddle
+    Pin_To_Bit(&UART_buffer[2], 1, pins_debounced[1]);  // Left shifter paddle
+    Pin_To_Bit(&UART_buffer[2], 2, pins_debounced[2]);  // Right back button
+    Pin_To_Bit(&UART_buffer[2], 3, pins_debounced[3]);  // Left back button
+    Pin_To_Bit(&UART_buffer[2], 4, pins_debounced[4]);  // D-pad up
+    Pin_To_Bit(&UART_buffer[2], 5, pins_debounced[5]);  // D-pad down
+    Pin_To_Bit(&UART_buffer[2], 6, pins_debounced[6]);  // D-pad right
+    Pin_To_Bit(&UART_buffer[2], 7, pins_debounced[7]);  // D-pad left
     if (pins_debounced[4] == GPIO_PIN_SET &&
         pins_debounced[5] == GPIO_PIN_SET &&
         pins_debounced[6] == GPIO_PIN_SET &&
         pins_debounced[7] == GPIO_PIN_SET)
-      Pin_To_Bit(&UART_buffer[2], 0, pins_debounced[8]); // D-pad button
+      Pin_To_Bit(&UART_buffer[3], 0, pins_debounced[8]); // D-pad button
     else
-      Pin_To_Bit(&UART_buffer[2], 0, GPIO_PIN_SET); // D-pad button
-    Pin_To_Bit(&UART_buffer[2], 1, pins_debounced[21]); // Right 1
-    Pin_To_Bit(&UART_buffer[2], 2, pins_debounced[22]); // Right 2
-    Pin_To_Bit(&UART_buffer[2], 3, pins_debounced[23]); // Right 3
-    Pin_To_Bit(&UART_buffer[2], 4, pins_debounced[24]); // Right 4
-    Pin_To_Bit(&UART_buffer[2], 5, pins_debounced[25]); // Right 5
-    Pin_To_Bit(&UART_buffer[2], 6, pins_debounced[26]); // Right 6
-    Pin_To_Bit(&UART_buffer[2], 7, pins_debounced[27]); // Left 1
-    Pin_To_Bit(&UART_buffer[3], 0, pins_debounced[28]); // Left 2
-    Pin_To_Bit(&UART_buffer[3], 1, pins_debounced[29]); // Left 3
-    Pin_To_Bit(&UART_buffer[3], 2, pins_debounced[30]); // Left 4
-    Pin_To_Bit(&UART_buffer[3], 3, pins_debounced[31]); // Left 5
-    Pin_To_Bit(&UART_buffer[3], 4, pins_debounced[32]); // Left 6
-    Pin_To_Bit(&UART_buffer[3], 5, (encoders[0].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    Pin_To_Bit(&UART_buffer[3], 6, (encoders[0].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    Pin_To_Bit(&UART_buffer[3], 7, (encoders[1].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    Pin_To_Bit(&UART_buffer[4], 0, (encoders[1].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    Pin_To_Bit(&UART_buffer[4], 1, (encoders[2].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    Pin_To_Bit(&UART_buffer[4], 2, (encoders[2].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    Pin_To_Bit(&UART_buffer[4], 3, (encoders[3].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    Pin_To_Bit(&UART_buffer[4], 4, (encoders[3].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    Pin_To_Bit(&UART_buffer[4], 5, (encoders[4].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    Pin_To_Bit(&UART_buffer[4], 6, (encoders[4].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    Pin_To_Bit(&UART_buffer[4], 7, (encoders[5].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
-    Pin_To_Bit(&UART_buffer[5], 0, (encoders[5].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+      Pin_To_Bit(&UART_buffer[3], 0, GPIO_PIN_SET); // D-pad button
+    Pin_To_Bit(&UART_buffer[3], 1, pins_debounced[21]); // Right 1
+    Pin_To_Bit(&UART_buffer[3], 2, pins_debounced[22]); // Right 2
+    Pin_To_Bit(&UART_buffer[3], 3, pins_debounced[23]); // Right 3
+    Pin_To_Bit(&UART_buffer[3], 4, pins_debounced[24]); // Right 4
+    Pin_To_Bit(&UART_buffer[3], 5, pins_debounced[25]); // Right 5
+    Pin_To_Bit(&UART_buffer[3], 6, pins_debounced[26]); // Right 6
+    Pin_To_Bit(&UART_buffer[3], 7, pins_debounced[27]); // Left 1
+    Pin_To_Bit(&UART_buffer[4], 0, pins_debounced[28]); // Left 2
+    Pin_To_Bit(&UART_buffer[4], 1, pins_debounced[29]); // Left 3
+    Pin_To_Bit(&UART_buffer[4], 2, pins_debounced[30]); // Left 4
+    Pin_To_Bit(&UART_buffer[4], 3, pins_debounced[31]); // Left 5
+    Pin_To_Bit(&UART_buffer[4], 4, pins_debounced[32]); // Left 6
+    Pin_To_Bit(&UART_buffer[4], 5, (encoders[0].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[4], 6, (encoders[0].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[4], 7, (encoders[1].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[5], 0, (encoders[1].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[5], 1, (encoders[2].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[5], 2, (encoders[2].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[5], 3, (encoders[3].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[5], 4, (encoders[3].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[5], 5, (encoders[4].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[5], 6, (encoders[4].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[5], 7, (encoders[5].state == Clockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
+    Pin_To_Bit(&UART_buffer[6], 0, (encoders[5].state == Counterclockwise) ? GPIO_PIN_RESET : GPIO_PIN_SET);
 
-    UART_buffer[6] = Compute_CRC(UART_buffer, sizeof(UART_buffer) - 1);
+    uint16_t UART_CRC = Compute_UART_CRC(UART_buffer, sizeof(UART_buffer) - 2);
+    UART_buffer[7] = (uint8_t)(UART_CRC & 0x00FF);
+    UART_buffer[8] = (uint8_t)(UART_CRC >> 8);
 
     HAL_UART_Transmit(&huart1, UART_buffer, sizeof(UART_buffer), HAL_MAX_DELAY);
 
@@ -743,6 +757,29 @@ void Pin_To_Bit(uint8_t* bitfield, uint8_t bit_index, GPIO_PinState pin_state)
   {
     *bitfield |= (1 << bit_index);
   }
+}
+
+uint16_t Compute_UART_CRC(const uint8_t* buffer, uint8_t length)
+{
+  // MCRF4XX 16 bits CRC with 0xFFFF init value
+  uint16_t accumulation = 0xFFFF;
+
+  for (int i = 0; i < length; i++)
+  {
+    accumulation = Accumulate_UART_CRC(accumulation, buffer[i]);
+  }
+
+  return accumulation;
+}
+
+uint16_t Accumulate_UART_CRC(uint16_t accumulation, uint8_t byte)
+{
+  const uint16_t accumulation_LSB = accumulation & 0x00FF;
+  const uint16_t accumulation_MSB = accumulation >> 8;
+  uint16_t tmp = (uint16_t)(byte) ^ accumulation_LSB;
+
+  tmp ^= (tmp << 4) & 0x00FF;
+  return accumulation_MSB ^ (tmp << 8) ^ (tmp << 3) ^ (tmp >> 4);
 }
 
 /* USER CODE END 4 */

@@ -165,6 +165,6 @@ struct fanatec_data_in_t {
 extern const uint8_t CRC8_table[256];
 
 /* Exported functions prototypes ---------------------------------------------*/
-uint8_t Compute_CRC(const uint8_t* buffer, uint8_t length);
+uint8_t Compute_Fanatec_CRC(const uint8_t* buffer, uint8_t length);
 
 #endif /* __FANATEC_H */
